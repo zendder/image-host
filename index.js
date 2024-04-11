@@ -6,6 +6,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import fetch from "node-fetch";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
@@ -67,31 +68,36 @@ if (!fs.existsSync(uploadDir)) {
 
 app.use("/uploads", express.static("uploads"));
 
-// POST endpoint to handle single file uploads
-app.post("/upload", upload.single("file"), (req, res) => {
+// POST endpoint to handle multiple file uploads
+app.post("/upload", upload.array("files"), (req, res) => {
   const tosAgreed = req.body.tosAgreed === "true";
   if (!tosAgreed) {
     return res
       .status(400)
       .send("You must agree to the terms of service before uploading.");
   }
-  const file = req.file;
-  if (!file) {
-    return res.status(400).send("No file uploaded.");
+  const files = req.files;
+  if (!files || files.length === 0) {
+    return res.status(400).send("No files uploaded.");
   }
   const ip =
     req.ip || req.headers["x-forwarded-for"] || req.connection.remoteAddress;
   const userAgent = req.headers["user-agent"];
-  const logMessage = `Uploaded file: ${file.originalname}, Size: ${file.size}, IP: ${ip}, User Agent: ${userAgent}`;
+  const uploadedFiles = files.map((file) => ({
+    filename: file.filename,
+    path: file.path,
+    url: `${req.protocol}://${req.get("host")}/uploads/${file.filename}`,
+  }));
+  const logMessage = `Uploaded files: ${files
+    .map((file) => file.originalname)
+    .join(", ")}, IP: ${ip}, User Agent: ${userAgent}`;
 
-  // Log file, IP, and User Agent to the console and send to the webhook
+  // Log files, IP, and User Agent to the console and send to the webhook
   console.log(logMessage);
   sendLogToDiscord(logMessage);
   res.status(200).json({
     message: "Upload successful!",
-    filename: file.filename,
-    path: file.path,
-    url: `${req.protocol}://${req.get("host")}/uploads/${file.filename}`,
+    files: uploadedFiles,
   });
 });
 
